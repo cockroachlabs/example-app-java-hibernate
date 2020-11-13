@@ -1,4 +1,5 @@
 *~
 .gradle
 build/
-.DS_Store
+.DS_Storebuilds
+certs
