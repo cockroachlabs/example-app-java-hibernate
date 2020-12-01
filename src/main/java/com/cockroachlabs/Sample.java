@@ -1,20 +1,20 @@
 package com.cockroachlabs;
 
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.Transaction;
-import org.hibernate.JDBCException;
-import org.hibernate.cfg.Configuration;
-
-import java.util.*;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.Random;
 import java.util.function.Function;
-
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.Id;
 import javax.persistence.Table;
+import org.hibernate.JDBCException;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.Transaction;
+import org.hibernate.cfg.Configuration;
 
-public class Sample {
+public class Sample implements Serializable {
 
     private static final Random RAND = new Random();
     private static final boolean FORCE_RETRY = false;
@@ -23,44 +23,48 @@ public class Sample {
 
     // Account is our model, which corresponds to the "accounts" database table.
     @Entity
-    @Table(name="accounts")
+    @Table(name = "accounts")
     public static class Account {
+
         @Id
-        @Column(name="id")
+        @Column(name = "id")
         public long id;
 
         public long getId() {
             return id;
         }
 
-        @Column(name="balance")
-        public long balance;
-        public long getBalance() {
+        @Column(name = "balance")
+        public BigDecimal balance;
+
+        public BigDecimal getBalance() {
             return balance;
         }
-        public void setBalance(long newBalance) {
+
+        public void setBalance(BigDecimal newBalance) {
             this.balance = newBalance;
         }
 
         // Convenience constructor.
         public Account(int id, int balance) {
             this.id = id;
-            this.balance = balance;
+            this.balance = BigDecimal.valueOf(balance);
         }
 
         // Hibernate needs a default (no-arg) constructor to create model objects.
-        public Account() {}
+        public Account() {
+        }
     }
 
-    private static Function<Session, Long> addAccounts() throws JDBCException{
-        Function<Session, Long> f = s -> {
-            long rv = 0;
+    private static Function<Session, BigDecimal> addAccounts() throws JDBCException {
+        Function<Session, BigDecimal> f = s -> {
+            BigDecimal rv = new BigDecimal(0);
             try {
                 s.save(new Account(1, 1000));
                 s.save(new Account(2, 250));
                 s.save(new Account(3, 314159));
-                rv = 1;
-                System.out.printf("APP: addAccounts() --> %d\n", rv);
+                rv = BigDecimal.valueOf(1);
+                System.out.printf("APP: addAccounts() --> %.2f\n", rv);
             } catch (JDBCException e) {
                 throw e;
             }
@@ -69,19 +73,19 @@ public class Sample {
         return f;
     }
 
-    private static Function<Session, Long> transferFunds(long fromId, long toId, long amount) throws JDBCException{
-        Function<Session, Long> f = s -> {
-            long rv = 0;
+    private static Function<Session, BigDecimal> transferFunds(long fromId, long toId, BigDecimal amount) throws JDBCException {
+        Function<Session, BigDecimal> f = s -> {
+            BigDecimal rv = new BigDecimal(0);
             try {
                 Account fromAccount = (Account) s.get(Account.class, fromId);
                 Account toAccount = (Account) s.get(Account.class, toId);
-                if (!(amount > fromAccount.getBalance())) {
-                    fromAccount.balance -= amount;
-                    toAccount.balance += amount;
+                if (!(amount.compareTo(fromAccount.getBalance()) > 0)) {
+                    fromAccount.balance = fromAccount.balance.subtract(amount);
+                    toAccount.balance = toAccount.balance.add(amount);
                     s.save(fromAccount);
                     s.save(toAccount);
                     rv = amount;
-                    System.out.printf("APP: transferFunds(%d, %d, %d) --> %d\n", fromId, toId, amount, rv);
+                    System.out.printf("APP: transferFunds(%d, %d, %.2f) --> %.2f\n", fromId, toId, amount, rv);
                 }
             } catch (JDBCException e) {
                 throw e;
@@ -94,9 +98,9 @@ public class Sample {
     // Test our retry handling logic if FORCE_RETRY is true.  This
     // method is only used to test the retry logic.  It is not
     // intended for production code.
-    private static Function<Session, Long> forceRetryLogic() throws JDBCException {
-        Function<Session, Long> f = s -> {
-            long rv = -1;
+    private static Function<Session, BigDecimal> forceRetryLogic() throws JDBCException {
+        Function<Session, BigDecimal> f = s -> {
+            BigDecimal rv = new BigDecimal(-1);
             try {
                 System.out.printf("APP: testRetryLogic: BEFORE EXCEPTION\n");
                 s.createNativeQuery("SELECT crdb_internal.force_retry('1s')").executeUpdate();
@@ -109,13 +113,13 @@ public class Sample {
         return f;
     }
 
-    private static Function<Session, Long> getAccountBalance(long id) throws JDBCException{
-        Function<Session, Long> f = s -> {
-            long balance;
+    private static Function<Session, BigDecimal> getAccountBalance(long id) throws JDBCException {
+        Function<Session, BigDecimal> f = s -> {
+            BigDecimal balance;
             try {
                 Account account = s.get(Account.class, id);
                 balance = account.getBalance();
-                System.out.printf("APP: getAccountBalance(%d) --> %d\n", id, balance);
+                System.out.printf("APP: getAccountBalance(%d) --> %.2f\n", id, balance);
             } catch (JDBCException e) {
                 throw e;
             }
@@ -127,8 +131,8 @@ public class Sample {
     // Run SQL code in a way that automatically handles the
     // transaction retry logic so we don't have to duplicate it in
     // various places.
-    private static long runTransaction(Session session, Function<Session, Long> fn) {
-        long rv = 0;
+    private static BigDecimal runTransaction(Session session, Function<Session, BigDecimal> fn) {
+        BigDecimal rv = new BigDecimal(0);
         int attemptCount = 0;
 
         while (attemptCount < MAX_ATTEMPT_COUNT) {
@@ -155,7 +159,7 @@ public class Sample {
 
             try {
                 rv = fn.apply(session);
-                if (rv != -1) {
+                if (!rv.equals(-1)) {
                     txn.commit();
                     System.out.printf("APP: COMMIT;\n");
                     break;
@@ -170,14 +174,14 @@ public class Sample {
                     System.out.printf("APP: retryable exception occurred:\n    sql state = [%s]\n    message = [%s]\n    retry counter = %s\n", e.getSQLState(), e.getMessage(), attemptCount);
                     System.out.printf("APP: ROLLBACK;\n");
                     txn.rollback();
-                    int sleepMillis = (int)(Math.pow(2, attemptCount) * 100) + RAND.nextInt(100);
+                    int sleepMillis = (int) (Math.pow(2, attemptCount) * 100) + RAND.nextInt(100);
                     System.out.printf("APP: Hit 40001 transaction retry error, sleeping %s milliseconds\n", sleepMillis);
                     try {
                         Thread.sleep(sleepMillis);
                     } catch (InterruptedException ignored) {
                         // no-op
                     }
-                    rv = -1;
+                    rv = BigDecimal.valueOf(-1);
                 } else {
                     throw e;
                 }
@@ -189,8 +193,8 @@ public class Sample {
     public static void main(String[] args) {
         // Create a SessionFactory based on our hibernate.cfg.xml configuration
         // file, which defines how to connect to the database.
-        SessionFactory sessionFactory =
-                new Configuration()
+        SessionFactory sessionFactory
+                = new Configuration()
                         .configure("hibernate.cfg.xml")
                         .addAnnotatedClass(Account.class)
                         .buildSessionFactory();
@@ -198,7 +202,7 @@ public class Sample {
         try (Session session = sessionFactory.openSession()) {
             long fromAccountId = 1;
             long toAccountId = 2;
-            long transferAmount = 100;
+            BigDecimal transferAmount = BigDecimal.valueOf(100);
 
             if (FORCE_RETRY) {
                 System.out.printf("APP: About to test retry logic in 'runTransaction'\n");
@@ -206,26 +210,26 @@ public class Sample {
             } else {
 
                 runTransaction(session, addAccounts());
-                long fromBalance = runTransaction(session, getAccountBalance(fromAccountId));
-                long toBalance = runTransaction(session, getAccountBalance(toAccountId));
-                if (fromBalance != -1 && toBalance != -1) {
+                BigDecimal fromBalance = runTransaction(session, getAccountBalance(fromAccountId));
+                BigDecimal toBalance = runTransaction(session, getAccountBalance(toAccountId));
+                if (!fromBalance.equals(-1) && !toBalance.equals(-1)) {
                     // Success!
-                    System.out.printf("APP: getAccountBalance(%d) --> %d\n", fromAccountId, fromBalance);
-                    System.out.printf("APP: getAccountBalance(%d) --> %d\n", toAccountId, toBalance);
+                    System.out.printf("APP: getAccountBalance(%d) --> %.2f\n", fromAccountId, fromBalance);
+                    System.out.printf("APP: getAccountBalance(%d) --> %.2f\n", toAccountId, toBalance);
                 }
 
                 // Transfer $100 from account 1 to account 2
-                long transferResult = runTransaction(session, transferFunds(fromAccountId, toAccountId, transferAmount));
-                if (transferResult != -1) {
+                BigDecimal transferResult = runTransaction(session, transferFunds(fromAccountId, toAccountId, transferAmount));
+                if (!transferResult.equals(-1)) {
                     // Success!
-                    System.out.printf("APP: transferFunds(%d, %d, %d) --> %d \n", fromAccountId, toAccountId, transferAmount, transferResult);
+                    System.out.printf("APP: transferFunds(%d, %d, %.2f) --> %.2f \n", fromAccountId, toAccountId, transferAmount, transferResult);
 
-                    long fromBalanceAfter = runTransaction(session, getAccountBalance(fromAccountId));
-                    long toBalanceAfter = runTransaction(session, getAccountBalance(toAccountId));
-                    if (fromBalanceAfter != -1 && toBalanceAfter != -1) {
+                    BigDecimal fromBalanceAfter = runTransaction(session, getAccountBalance(fromAccountId));
+                    BigDecimal toBalanceAfter = runTransaction(session, getAccountBalance(toAccountId));
+                    if (!fromBalanceAfter.equals(-1) && !toBalanceAfter.equals(-1)) {
                         // Success!
-                        System.out.printf("APP: getAccountBalance(%d) --> %d\n", fromAccountId, fromBalanceAfter);
-                        System.out.printf("APP: getAccountBalance(%d) --> %d\n", toAccountId, toBalanceAfter);
+                        System.out.printf("APP: getAccountBalance(%d) --> %.2f\n", fromAccountId, fromBalanceAfter);
+                        System.out.printf("APP: getAccountBalance(%d) --> %.2f\n", toAccountId, toBalanceAfter);
                     }
                 }
             }
