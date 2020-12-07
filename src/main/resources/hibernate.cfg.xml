@@ -13,7 +13,7 @@
         <property name="hibernate.connection.password">password</property>
 
         <!-- Required so a table can be created from the 'Account' class in Sample.java -->
-        <property name="hibernate.hbm2ddl.auto">update</property>
+        <property name="hibernate.hbm2ddl.auto">create-drop</property>
 
         <!-- Optional: Show SQL output for debugging -->
         <property name="hibernate.show_sql">true</property>
