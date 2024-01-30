@@ -4,10 +4,10 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.Random;
 import java.util.function.Function;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.Table;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
 import org.hibernate.JDBCException;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
@@ -20,41 +20,6 @@ public class Sample implements Serializable {
     private static final boolean FORCE_RETRY = false;
     private static final String RETRY_SQL_STATE = "40001";
     private static final int MAX_ATTEMPT_COUNT = 6;
-
-    // Account is our model, which corresponds to the "accounts" database table.
-    @Entity
-    @Table(name = "accounts")
-    public static class Account {
-
-        @Id
-        @Column(name = "id")
-        public long id;
-
-        public long getId() {
-            return id;
-        }
-
-        @Column(name = "balance")
-        public BigDecimal balance;
-
-        public BigDecimal getBalance() {
-            return balance;
-        }
-
-        public void setBalance(BigDecimal newBalance) {
-            this.balance = newBalance;
-        }
-
-        // Convenience constructor.
-        public Account(int id, int balance) {
-            this.id = id;
-            this.balance = BigDecimal.valueOf(balance);
-        }
-
-        // Hibernate needs a default (no-arg) constructor to create model objects.
-        public Account() {
-        }
-    }
 
     private static Function<Session, BigDecimal> addAccounts() throws JDBCException {
         Function<Session, BigDecimal> f = s -> {
